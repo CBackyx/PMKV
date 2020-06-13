@@ -26,6 +26,8 @@ long long fakeTimer = 0;
 int doThread(int id);
 long long getTime();
 
+int committed_txn_num  = 0;
+
 int doThread(int id) {
     int cur_v = 0;
     int cur_xid = 0;
@@ -124,6 +126,8 @@ int doThread(int id) {
                             // cout<<currl->records[1].createdXid<<" "<<currl->records[1].expiredXid<<" "<<currl->records[1].value<<endl;
                             engine->dp.AddOrUpdate(cur_k, cur_v);
                         }
+
+                        committed_txn_num += 1;
 
                         ocnt = 0;
                         committed = true;
@@ -250,29 +254,33 @@ int doThread(int id) {
 int doCheckPointThread(int id) {
     // need some condition to do checkpoint
 
-    fprintf(engine->lm.fp, "KPT BEGIN");
-    vector<int> active_txns;
-    for (int i = 0; i < MAX_TRANSACTION_NUM; ++i) {
-        if (x_is_active[i]) active_txns.push_back(i);
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::microseconds(rand() % 10 + 1));
+
+        fprintf(engine->lm.fp, "KPT BEGIN");
+        vector<int> active_txns;
+        for (int i = 0; i < MAX_TRANSACTION_NUM; ++i) {
+            if (x_is_active[i]) active_txns.push_back(i);
+        }
+
+        fprintf(engine->lm.fp, "%d ", active_txns.size());
+
+        for (int i = 0; i < active_txns.size(); ++i) {
+            fprintf(engine->lm.fp, "%d ", active_txns[i]);
+        }
+
+
+        fprintf(engine->lm.fp, "\n");
+        fflush(engine->lm.fp);
+
+        if (engine->dp.flushMem() != 0) {
+            printf("Flush door plate failed\n");
+            exit(-1);
+        }
+
+        fprintf(engine->lm.fp, "KPT END\n");
+        fflush(engine->lm.fp);
     }
-
-    fprintf(engine->lm.fp, "%d ", active_txns.size());
-
-    for (int i = 0; i < active_txns.size(); ++i) {
-        fprintf(engine->lm.fp, "%d ", active_txns[i]);
-    }
-
-
-    fprintf(engine->lm.fp, "\n");
-    fflush(engine->lm.fp);
-
-    if (engine->dp.flushMem() != 0) {
-        printf("Flush door plate failed\n");
-        exit(-1);
-    }
-
-    fprintf(engine->lm.fp, "KPT END\n");
-    fflush(engine->lm.fp);
     
     return 0;
 }
@@ -299,11 +307,15 @@ int main() {
         exit(-1);
     }
 
-    RetCode ret = engine->dp.Init();
-    if (ret != kSucc) {
+    int ret1 = engine->lm.init();
+    if (ret1 != 0) {
         printf("Create/Open log file failed!\n");
         exit(-1);
     }
+
+    engine->lm.setDoorPlate(&engine->dp);
+
+    engine->lm.doRecovery();
 
     srand(1);
 
@@ -356,6 +368,7 @@ int main() {
         ths[i].join();
     }
 
+    checkPointThread.~thread();
 
     printf("Total time cost is %lf\n", (double)getTime()/1000000000);
 
