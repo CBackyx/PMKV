@@ -154,7 +154,35 @@ transactional？
 
 
 
+如果我倒着回溯log，哪些是有价值的？
 
+* 首先要收集路上遇到的所有txn id
+  * 如果这个txn id首先遇到的命令不是commit，那么这个txn应该直接被忽略
+  * 建立一个txn id到结构体txn_info的映射
+    * txn_info中应该有以下信息
+      * valid，就是是否被commit的，是否需要记录其中命令的
+      * command vector
+
+* 试图遇到一个KPT END，那么进入一个分支
+  * 找到对应的KPT BEGIN，那么获取到其中活跃的txn
+
+
+
+算了，还是顺序遍历吧
+
+* 第一遍顺序遍历，做两件事
+  * 找出其中所有commit语句，记录其中的txn id
+  * 试图找到最后一个有END的KPT BEGIN(不妨用一个vector来存所有的KPT index)
+    * 如果找到了满足条件的KPT BEGIN，用这个集合筛选掉committed txn id set
+* 第二遍遍历
+  * 重做所有在committed txn id set 中的txn命令
+    * 这不用进入线程中来做
+
+
+
+fopen读写模式有一个问题是
+
+* 比如我读到了文件的某个位置，这个时候我写，是写到什么位置？
 
 
 

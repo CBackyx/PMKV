@@ -6,17 +6,22 @@
 #include <string.h>
 
 #include "door_plate.h"
+#include "engine.h"
 
 using namespace std;
 
-class LogManager {
+struct CheckPointInfo {
+    vector<int> active_txns;
+    bool hasEnd;
+};
 
-    DoorPlate* dp;
-    string dir_;
+class LogManager {
 
     public:
 
         FILE* fp;
+        DoorPlate* dp;
+        string dir_;
 
         std::mutex mtx;
 

@@ -123,6 +123,22 @@ RetCode DoorPlate::AddOrUpdate(const std::string& key, int value) {
   return kSucc;
 }
 
+RetCode DoorPlate::Delete(const std::string& key) {
+  if (key.size() > kMaxKeyLen) {
+    return kInvalidArgument;
+  }
+
+  int index = CalcIndex(key);
+  if (index < 0) {
+    return kFull;
+  }
+
+  Item* iptr = items_ + index;
+  iptr->in_use == 0;
+
+  return kSucc;
+}
+
 RetCode DoorPlate::Read(const std::string& key, int& value) {
   int index = CalcIndex(key);
   if (index < 0
