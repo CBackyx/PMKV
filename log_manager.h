@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <string.h>
+#include <mutex>
 
 #include "door_plate.h"
 #include "engine.h"

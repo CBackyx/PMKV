@@ -6,10 +6,13 @@
 #include <cstring>
 #include <iostream>
 #include <utility>
+#include <unistd.h>
 #include "utils.h"
 #include "door_plate.h"
 
-static const uint32_t kMaxDoorCnt = 1024 * 1024 * 32;
+#include "headers.h"
+
+static const uint32_t kMaxDoorCnt = 1024 * 32;
 static const char kMetaFileName[] = "META";
 static const int kMaxRangeBufCount = kMaxDoorCnt;
 

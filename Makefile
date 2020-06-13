@@ -9,7 +9,7 @@ SRCS = $(wildcard *.cpp)
 OBJS = $(patsubst %cpp, %o, $(SRCS))
 
 # 可执行文件的名字
-TARGET = mvcckv
+TARGET = pmkv
 
 CXXFLAGS += -std=c++11
 

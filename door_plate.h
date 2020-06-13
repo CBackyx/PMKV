@@ -4,8 +4,19 @@
 #include <stdint.h>
 #include <map>
 #include <string>
-#include "engine.h"
-#include "data_store.h"
+
+enum RetCode {
+  kSucc = 0,
+  kNotFound = 1,
+  kCorruption = 2,
+  kNotSupported = 3,
+  kInvalidArgument = 4,
+  kIOError = 5,
+  kIncomplete = 6,
+  kTimedOut = 7,
+  kFull = 8,
+  kOutOfMemory = 9,
+};
 
 static const uint32_t kMaxKeyLen = 32;
 

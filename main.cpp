@@ -27,6 +27,9 @@ int doThread(int id);
 long long getTime();
 
 int committed_txn_num  = 0;
+std::mutex committed_txn_num_mtx;
+
+void modifyCommittedTxnNum(int incre);
 
 int doThread(int id) {
     int cur_v = 0;
@@ -37,9 +40,10 @@ int doThread(int id) {
     int cur_op_num;
     string cur_k;
     std::map<std::string, int> cur_table;
+    std::vector<std::string> to_delete;
 
     // FILE *fp;
-    ifstream fin(threadFiles[id].c_str());
+    ifstream fin(("threads/" + threadFiles[id]).c_str());
     // fp = fopen(threadFiles[id].c_str(), "rb");
     // if (fp == NULL) {
     //     printf("Open input file for thread %d failed!\n", id);
@@ -88,13 +92,19 @@ int doThread(int id) {
                     case 'B':
                         // Begin
                         sscanf(xbuffer[i] + 6, "%d", &cur_xid);
+                        printf("%d\n", cur_xid);
                         engine->x_mtx.lock();
-                        engine->copyData(cur_table, cur_xid);
+                        // engine->copyData(cur_table, cur_xid);
+                        cur_table.clear();
+                        to_delete.clear();
+
                         x_is_active[cur_xid] = true;
                         sprintf(obuffer[ocnt++], "%d,BEGIN,%lld,", cur_xid, getTime());
 
+                        engine->lm.mtx.lock();
                         fprintf(engine->lm.fp, "BEGIN %d\n", cur_xid);
                         engine->lm.flushLogs();
+                        engine->lm.mtx.unlock();
                         // printf("Thread %d Begin transaction %d\n", id, cur_xid);
                         break;
                     case 'C':
@@ -115,8 +125,10 @@ int doThread(int id) {
                             fflush(wfp);
                         }
 
+                        engine->lm.mtx.lock();
                         fprintf(engine->lm.fp, "COMMIT %d\n", cur_xid);
                         engine->lm.flushLogs();
+                        engine->lm.mtx.unlock();
 
                         for (std::map<std::string, int>::iterator it = cur_table.begin(); it != cur_table.end(); ++it) {
                             string cur_k = it->first;
@@ -127,7 +139,11 @@ int doThread(int id) {
                             engine->dp.AddOrUpdate(cur_k, cur_v);
                         }
 
-                        committed_txn_num += 1;
+                        for (int kk = 0; kk < to_delete.size(); ++kk) {
+                            engine->dp.Delete(to_delete[kk]);
+                        }
+
+                        modifyCommittedTxnNum(1);
 
                         ocnt = 0;
                         committed = true;
@@ -154,10 +170,12 @@ int doThread(int id) {
                         } else {
                             cur_table[cur_k] = cur_v;
                         }
-                        sprintf(obuffer[ocnt++], "%d,%s,%lld,%d", cur_xid, tar, getTime(), cur_table[cur_k]);
+                        // sprintf(obuffer[ocnt++], "%d,%s,%lld,%d", cur_xid, tar, getTime(), cur_table[cur_k]);
                         
+                        engine->lm.mtx.lock();
                         fprintf(engine->lm.fp, "Update %d %s %d\n", cur_xid, tar, cur_v);
                         engine->lm.flushLogs();
+                        engine->lm.mtx.unlock();
 
                         // printf("Thread %d Read %s %d\n", id, tar, cur_v);
                         break;
@@ -166,7 +184,16 @@ int doThread(int id) {
                         sscanf(xbuffer[i] + 5, "%s", tar);
                         cur_k = tar;
 
-                        sprintf(obuffer[ocnt++], "%d,%s,%lld,%d", cur_xid, tar, getTime(), cur_table[cur_k]);
+                        engine->dp.Delete(cur_k);
+
+                        engine->lm.mtx.lock();
+                        fprintf(engine->lm.fp, "Delete %d %s\n", cur_xid, tar);
+                        engine->lm.flushLogs();
+                        engine->lm.mtx.unlock();
+
+                        to_delete.push_back(cur_k);
+
+                        // sprintf(obuffer[ocnt++], "%d,%s,%lld,%d", cur_xid, tar, getTime(), cur_table[cur_k]);
                         // printf("Thread %d Read %s %d\n", id, tar, cur_v);
                         break;
                     case 'S':
@@ -196,8 +223,10 @@ int doThread(int id) {
                             cur_table[cur_k] = cur_v;
                         }
 
+                        engine->lm.mtx.lock();
                         fprintf(engine->lm.fp, "Update %d %s %d\n", cur_xid, tar, cur_v);
                         engine->lm.flushLogs();
+                        engine->lm.mtx.unlock();
                         // while (engine->updateRecord(cur_k, cur_op_num, cur_xid) != 0) {
                         //     std::this_thread::sleep_for(std::chrono::microseconds(rand() % 10 + 1));
                         //     if (++scnt > 5) {
@@ -251,35 +280,51 @@ int doThread(int id) {
     return 0;
 }
 
+void modifyCommittedTxnNum(int incre) {
+    committed_txn_num_mtx.lock();
+    committed_txn_num += incre;
+    committed_txn_num_mtx.unlock();
+
+}
+
 int doCheckPointThread(int id) {
     // need some condition to do checkpoint
 
     while (true) {
-        std::this_thread::sleep_for(std::chrono::microseconds(rand() % 10 + 1));
+        std::this_thread::sleep_for(std::chrono::microseconds(rand() % 1000 + 1));
 
-        fprintf(engine->lm.fp, "KPT BEGIN");
-        vector<int> active_txns;
-        for (int i = 0; i < MAX_TRANSACTION_NUM; ++i) {
-            if (x_is_active[i]) active_txns.push_back(i);
+        if (committed_txn_num >= 10) {
+            modifyCommittedTxnNum(-10);
+
+            engine->lm.mtx.lock();
+
+            fprintf(engine->lm.fp, "KPT BEGIN ");
+            vector<int> active_txns;
+            for (int i = 0; i < MAX_TRANSACTION_NUM; ++i) {
+                if (x_is_active[i]) active_txns.push_back(i);
+            }
+
+            fprintf(engine->lm.fp, "%d ", (int)active_txns.size());
+
+            for (int i = 0; i < active_txns.size(); ++i) {
+                fprintf(engine->lm.fp, "%d ", active_txns[i]);
+            }
+
+
+            fprintf(engine->lm.fp, "\n");
+            fflush(engine->lm.fp);
+
+            if (engine->dp.flushMem() != 0) {
+                printf("Flush door plate failed\n");
+                exit(-1);
+            }
+
+            fprintf(engine->lm.fp, "KPT END\n");
+            fflush(engine->lm.fp);
+
+            engine->lm.mtx.unlock();
         }
 
-        fprintf(engine->lm.fp, "%d ", active_txns.size());
-
-        for (int i = 0; i < active_txns.size(); ++i) {
-            fprintf(engine->lm.fp, "%d ", active_txns[i]);
-        }
-
-
-        fprintf(engine->lm.fp, "\n");
-        fflush(engine->lm.fp);
-
-        if (engine->dp.flushMem() != 0) {
-            printf("Flush door plate failed\n");
-            exit(-1);
-        }
-
-        fprintf(engine->lm.fp, "KPT END\n");
-        fflush(engine->lm.fp);
     }
     
     return 0;
@@ -297,9 +342,9 @@ long long getTime() {
     return (long long)duration;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     // Initialize the KV engine
-    engine = new Engine("data/");
+    engine = new Engine("data");
 
     RetCode ret = engine->dp.Init();
     if (ret != kSucc) {
@@ -315,13 +360,16 @@ int main() {
 
     engine->lm.setDoorPlate(&engine->dp);
 
-    engine->lm.doRecovery();
+    if (argv[1][0] == 'R') {
+        engine->lm.doRecovery();
+    } 
 
     srand(1);
 
-    char threadFilesPath[] = "./";
+    char threadFilesPath[] = "threads/";
     int threadNum = getFiles(threadFilesPath, threadFiles);
 
+    printf("threadNum %d\n", threadNum);
     for (int i = 0; i < threadNum; ++i) {
         sscanf(threadFiles[i].c_str(), "thread_%d.txt", &threadIDs[i]);
     }
@@ -331,29 +379,37 @@ int main() {
     for (int i = 0; i < MAX_TRANSACTION_NUM + 1; ++ i) {
         x_is_active[i] = false;
     }
-    
-    // Now initialize the KV engine using "data_prepare.txt"
-    printf("Initializing KV engine content\n");
+
     FILE *fp;
-    fp = fopen("data_prepare.txt", "r");
-    if (fp == NULL) {
-        printf("Open data_prepare.txt failed!\n");
-        return -1;
-    }
+    
+    if (argv[1][0] == 'I') {
 
-    // Attention!
-    // The MAX_TRANSACTION_NUM transaction is preserved for initialize the KV, so it is always not active
-    int cur_v = 0;
-    char cmd_buffer[MAX_COMMAND_SIZE];
-    while (fscanf(fp, "%s", cmd_buffer) != EOF) {
-        fscanf(fp, "%s", cmd_buffer);
-        fscanf(fp, "%d", &cur_v);
-        string curs = cmd_buffer;
-        cout << curs << endl;
-        engine->addRecord(curs, cur_v, MAX_TRANSACTION_NUM);
-    }
+        // Now initialize the KV engine using "data_prepare.txt"
+        printf("Initializing KV engine content\n");
+        
+        fp = fopen("data_prepare.txt", "r");
+        if (fp == NULL) {
+            printf("Open data_prepare.txt failed!\n");
+            return -1;
+        }
 
-    fclose(fp);
+        // Attention!
+        // The MAX_TRANSACTION_NUM transaction is preserved for initialize the KV, so it is always not active
+        int cur_v = 0;
+        char cmd_buffer[MAX_COMMAND_SIZE];
+        while (fscanf(fp, "%s", cmd_buffer) != EOF) {
+            fscanf(fp, "%s", cmd_buffer);
+            fscanf(fp, "%d", &cur_v);
+            string curs = cmd_buffer;
+            cout << curs << endl;
+            // engine->addRecord(curs, cur_v, MAX_TRANSACTION_NUM);
+            engine->dp.AddOrUpdate(curs, cur_v);
+        }
+
+        engine->dp.flushMem();
+
+        fclose(fp);
+    }
 
     start = high_resolution_clock::now();
 
@@ -368,6 +424,7 @@ int main() {
         ths[i].join();
     }
 
+    checkPointThread.detach();
     checkPointThread.~thread();
 
     printf("Total time cost is %lf\n", (double)getTime()/1000000000);

@@ -5,7 +5,7 @@ using namespace std;
 static const string LogFileName = "REDOLOG";
 
 int LogManager::init() {
-    this->fp = fopen((this->dir_+ LogFileName).c_str(), "ab+");
+    this->fp = fopen((this->dir_ + "/" + LogFileName).c_str(), "ab+");
     if (this->fp == NULL) {
         printf("Open log file failed!\n");
         return -1;
@@ -15,7 +15,7 @@ int LogManager::init() {
 }
 
 int LogManager::checkPoint() {
-
+    return 0;
 }
 
 int LogManager::doRecovery() {
@@ -52,7 +52,7 @@ int LogManager::doRecovery() {
                 break;
             case 'K':
                 fscanf(this->fp, "%s", cmd_buffer);
-                if (cmd_buffer[0] = 'B') {
+                if (cmd_buffer[0] == 'B') {
                     int active_num = 0;
                     CheckPointInfo cur_cpt;
                     cur_cpt.hasEnd = false;
@@ -151,7 +151,7 @@ int LogManager::doRecovery() {
 }
 
 int LogManager::getUsefulLogs(vector<string>& logs) {
-
+    return 0;
 }
 
 int LogManager::flushLogs() {
@@ -164,5 +164,5 @@ int LogManager::appendLog(string log) {
 }
 
 void LogManager::setDoorPlate(DoorPlate* dp) {
-
+    this->dp = dp;
 }
