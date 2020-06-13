@@ -1,0 +1,4 @@
+INSERT attr_A 5
+INSERT attr_B 15
+INSERT attr_C 20
+INSERT attr_D 0
