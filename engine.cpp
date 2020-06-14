@@ -247,7 +247,3 @@ void Engine::copyData(std::map<std::string, int>& cur_table, int xid) {
 //     }
 //     this->mtx.unlock();
 // }
-
-int Engine::doRecovery() {
-    
-}

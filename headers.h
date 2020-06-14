@@ -15,6 +15,7 @@
 #include <ctime>
 #include <mutex>
 #include <set>
+#include <sstream>
 
 #include "utils.h"
 #include "defines.h"

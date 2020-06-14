@@ -1,0 +1,4 @@
+BEGIN 40000
+SET attr_B, attr_B + 10000
+SET attr_A, attr_A - 10000
+COMMIT 40000

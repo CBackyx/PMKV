@@ -41,8 +41,6 @@ class Engine {
         DoorPlate dp;
         LogManager lm;
 
-        int doRecovery();
-
         bool recordIsVisible(struct Record* r, int xid);
         bool recordIsLocked(struct Record* r, int xid);
         int addRecord(string key, int value, int xid);

@@ -157,3 +157,13 @@ int DoorPlate::flushMem() {
   const int map_size = kMaxDoorCnt * sizeof(Item);
   return msync(items_, map_size, MS_SYNC);
 }
+
+void DoorPlate::PrintState() {
+  const int map_size = kMaxDoorCnt * sizeof(Item);
+  msync(items_, map_size, MS_SYNC);
+  for (int i = 0; i < kMaxDoorCnt; ++i) {
+    if (items_[i].in_use != 0) {
+      printf("%s %d\n", items_[i].key, items_[i].value);
+    }
+  }
+}

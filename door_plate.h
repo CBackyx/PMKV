@@ -43,6 +43,8 @@ class DoorPlate  {
 
     RetCode Read(const std::string& key, int& value);
 
+    void PrintState();
+
     int flushMem();
 
  private:

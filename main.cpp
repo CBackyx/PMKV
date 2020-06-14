@@ -115,10 +115,9 @@ int doThread(int id) {
                             engine->reclaim(x, cur_xid);
                         }
                         toReclaim.clear();
-                        cur_table.clear();
+
                         x_is_active[cur_xid] = false;
                         sprintf(obuffer[ocnt++], "%d,END,%lld,", cur_xid, getTime());
-                        engine->mtx.unlock();
 
                         for (int k=0; k<ocnt; ++k) {
                             fprintf(wfp, "%s\n", obuffer[k]);
@@ -134,6 +133,7 @@ int doThread(int id) {
                             string cur_k = it->first;
                             // cout<<"cur_k "<<cur_k<<endl;
                             int cur_v = it->second;
+                            // cout<<"cur_v"<<cur_v<<endl;
                             // cout<<currl->records[0].createdXid<<" "<<currl->records[0].expiredXid<<" "<<currl->records[0].value<<endl;
                             // cout<<currl->records[1].createdXid<<" "<<currl->records[1].expiredXid<<" "<<currl->records[1].value<<endl;
                             engine->dp.AddOrUpdate(cur_k, cur_v);
@@ -143,10 +143,16 @@ int doThread(int id) {
                             engine->dp.Delete(to_delete[kk]);
                         }
 
+                        cur_table.clear();
+                        to_delete.clear();
+
                         modifyCommittedTxnNum(1);
 
                         ocnt = 0;
                         committed = true;
+
+                        engine->mtx.unlock();
+
                         break;
                     case 'R':
                         // Read
@@ -293,8 +299,8 @@ int doCheckPointThread(int id) {
     while (true) {
         std::this_thread::sleep_for(std::chrono::microseconds(rand() % 1000 + 1));
 
-        if (committed_txn_num >= 10) {
-            modifyCommittedTxnNum(-10);
+        if (committed_txn_num >= 1000) {
+            modifyCommittedTxnNum(-1000);
 
             engine->lm.mtx.lock();
 
@@ -318,6 +324,8 @@ int doCheckPointThread(int id) {
                 printf("Flush door plate failed\n");
                 exit(-1);
             }
+
+            // engine->dp.PrintState();
 
             fprintf(engine->lm.fp, "KPT END\n");
             fflush(engine->lm.fp);
@@ -360,25 +368,15 @@ int main(int argc, char* argv[]) {
 
     engine->lm.setDoorPlate(&engine->dp);
 
+    start = high_resolution_clock::now();
+
+    if (argv[1][0] == 'P') {
+        engine->dp.PrintState();
+    }
+
     if (argv[1][0] == 'R') {
         engine->lm.doRecovery();
     } 
-
-    srand(1);
-
-    char threadFilesPath[] = "threads/";
-    int threadNum = getFiles(threadFilesPath, threadFiles);
-
-    printf("threadNum %d\n", threadNum);
-    for (int i = 0; i < threadNum; ++i) {
-        sscanf(threadFiles[i].c_str(), "thread_%d.txt", &threadIDs[i]);
-    }
-
-    printf("Thread num is %d\n", threadNum);
-    // Initialize transactions info
-    for (int i = 0; i < MAX_TRANSACTION_NUM + 1; ++ i) {
-        x_is_active[i] = false;
-    }
 
     FILE *fp;
     
@@ -411,21 +409,38 @@ int main(int argc, char* argv[]) {
         fclose(fp);
     }
 
-    start = high_resolution_clock::now();
+    if (argv[1][0] == 'N') {
+        srand(1);
 
-    checkPointThread = thread(doCheckPointThread, threadNum); // ?
+        char threadFilesPath[] = "threads/";
+        int threadNum = getFiles(threadFilesPath, threadFiles);
 
-    // Do all the threads
-    printf("Initializing threads!\n");
-    for (int i = 0; i < threadNum; ++i) {
-        ths[i] = thread(doThread, i);
+        printf("threadNum %d\n", threadNum);
+        for (int i = 0; i < threadNum; ++i) {
+            sscanf(threadFiles[i].c_str(), "thread_%d.txt", &threadIDs[i]);
+        }
+
+        printf("Thread num is %d\n", threadNum);
+        // Initialize transactions info
+        for (int i = 0; i < MAX_TRANSACTION_NUM + 1; ++ i) {
+            x_is_active[i] = false;
+        }
+
+
+        checkPointThread = thread(doCheckPointThread, threadNum); // ?
+
+        // Do all the threads
+        printf("Initializing threads!\n");
+        for (int i = 0; i < threadNum; ++i) {
+            ths[i] = thread(doThread, i);
+        }
+        for (int i = 0; i < threadNum; ++i) {
+            ths[i].join();
+        }
+
+        checkPointThread.detach();
+        checkPointThread.~thread();
     }
-    for (int i = 0; i < threadNum; ++i) {
-        ths[i].join();
-    }
-
-    checkPointThread.detach();
-    checkPointThread.~thread();
 
     printf("Total time cost is %lf\n", (double)getTime()/1000000000);
 
